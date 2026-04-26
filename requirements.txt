@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+google-cloud-firestore
+pydantic
+python-dotenv
+httpx
