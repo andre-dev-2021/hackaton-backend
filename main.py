@@ -258,7 +258,7 @@ def set_instituicao(i: Instituicao):
         "message": "Nova instituição adicionado com sucesso"
     }
         
-@app.put("/api/v1/instituicoes/{doc_id}")
+@app.put("/api/v1/instituicoes/{doc_id}", dependencies=[Depends(verificar_chave)])
 def update_instituicao(i: Instituicao, doc_id: str):
     data = {
         "nome": i.nome,
