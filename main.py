@@ -80,7 +80,7 @@ load_dotenv()
 
 app = FastAPI(
     title="Hackaton Backend API",
-    description="API REST para gerenciamento de voluntários, instituições e eventos de hackathon social.",
+    description="API REST para integraçao Firestore e IBM watsonx Orchestrate.",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -89,7 +89,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://koinonia-five.vercel.app"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
