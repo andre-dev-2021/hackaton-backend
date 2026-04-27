@@ -12,7 +12,7 @@ from fastapi import Security
 from google.cloud import firestore
 from auth import INSTANCE_URL, get_token
 from repository import Repository
-from models import ChatRequest, ChatResponse, Convite, Instituicao, Login, StartSessionResponse, Voluntario, Evento
+from models import Cadastro, ChatRequest, ChatResponse, Convite, Instituicao, Login, StartSessionResponse, Voluntario, Evento
 
 def parse_logs_to_json(text):
     pattern = r'\{.*?\}(?=\n|$)'
@@ -196,6 +196,20 @@ def login(login: Login):
         "id": user['id'],
         "email": user['email'],
         "tipo": user['tipo']
+    }
+
+@app.post("/api/v1/cadastro", dependencies=[Depends(verificar_chave)])
+def cadastro(cad: Cadastro):
+    data = {
+        "nome": cad.nome,
+        "email": cad.email,
+        "password": cad.password,
+        "tipo": cad.tipo,
+        "criadoEm": firestore.SERVER_TIMESTAMP 
+    }
+    repository.set_document("usuarios", data)
+    return {
+        "message": "Novo usuário adicionado com sucesso"
     }
 
 @app.post("/api/v1/voluntarios", dependencies=[Depends(verificar_chave)], status_code=201)

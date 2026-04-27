@@ -17,6 +17,7 @@ class Cadastro(BaseModel):
     nome: str
     email: str
     password: str
+    tipo: str
     
 class Voluntario(BaseModel):
     nome: str
