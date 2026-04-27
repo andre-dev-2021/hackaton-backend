@@ -221,10 +221,12 @@ def update_convite_status(doc_id: str, status: str):
     
 @app.post("/api/v1/login", dependencies=[Depends(verificar_chave)])
 def login(login: Login):
-    user = [u for u in repository.get_collection('usuarios') if u["email"] == login.email][0]
+    user = [u for u in repository.get_collection('usuarios') if u["email"] == login.email]
     
     if(user == []):
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    user = user[0]
     
     if(user['password'] != login.password):
         raise HTTPException(status_code=401, detail="Senha inválida")
