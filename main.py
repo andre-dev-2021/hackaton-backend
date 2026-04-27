@@ -14,14 +14,50 @@ from auth import INSTANCE_URL, get_token
 from repository import Repository
 from models import Cadastro, ChatRequest, ChatResponse, Convite, Instituicao, Login, StartSessionResponse, Voluntario, Evento
 
-def parse_logs_to_json(text):
-    pattern = r'\{.*?\}(?=\n|$)'
-    matches = re.findall(pattern, text)
+# Pipeline para extração da mensagem
+def extract_json_objects(text):
+    objs = []
+    stack = 0
+    start = None
 
+    for i, char in enumerate(text):
+        if char == '{':
+            if stack == 0:
+                start = i
+            stack += 1
+        elif char == '}':
+            stack -= 1
+            if stack == 0 and start is not None:
+                objs.append(text[start:i+1])
+
+    return objs
+
+
+def sanitize_content_field(s):
+    return re.sub(
+        r'"content":\s*".*?"(?=,\s*"name")',
+        '"content": null',
+        s,
+        flags=re.DOTALL
+    )
+
+
+def parse_logs_to_json(text):
+    matches = extract_json_objects(text)
     result = []
+
     for item in matches:
-        clean = item.replace('\\"', '"')
-        result.append(json.loads(clean))
+        try:
+            clean = sanitize_content_field(item)
+            result.append(json.loads(clean))
+        except json.JSONDecodeError:
+            try:
+                # fallback: tenta corrigir escapes básicos
+                clean = item.replace('\\"', '"')
+                clean = sanitize_content_field(clean)
+                result.append(json.loads(clean))
+            except Exception:
+                print("Falhou ao parsear:", item[:200])
 
     return result
 
@@ -53,8 +89,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET, POST, PUT, DELETE"],
+    allow_origins=["https://koinonia-five.vercel.app/"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -170,9 +207,9 @@ def criar_convite(c: Convite):
         "message": "Convite criado com sucesso"
     }
 
-@app.put("/api/v1/convites/{doc_id}/status", dependencies=[Depends(verificar_chave)])
+@app.put("/api/v1/convites/{doc_id}", dependencies=[Depends(verificar_chave)])
 def update_convite_status(doc_id: str, status: str):
-    status_validos = ["pendente", "aceito", "rejeitado", "cancelado"]
+    status_validos = ["pendente", "aceito", "recusado"]
     
     if status not in status_validos:
         raise HTTPException(status_code=400, detail=f"Status inválido. Use: {', '.join(status_validos)}")
@@ -189,7 +226,7 @@ def login(login: Login):
     if(user == []):
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     
-    if(user['senha'] != login.password):
+    if(user['password'] != login.password):
         raise HTTPException(status_code=401, detail="Senha inválida")
     
     return {
@@ -208,6 +245,31 @@ def cadastro(cad: Cadastro):
         "criadoEm": firestore.SERVER_TIMESTAMP 
     }
     repository.set_document("usuarios", data)
+    
+    if cad.tipo == "voluntario":
+        vol = {
+            "nome": cad.nome,
+            "logradouro": '',
+            "cidade": '',
+            "uf": '',
+            "cep": '',
+            "contato": '',
+            "habilidades": '',
+            "disponibilidade": ''
+        }
+        repository.set_document("voluntarios", vol)
+    else:
+        inst = {
+            "nome": cad.nome,
+            "setor": '',
+            "logradouro": '',
+            "numero": '',
+            "cidade": '',
+            "uf": '',
+            "cep": '',
+            "contato": ''
+        }
+        repository.set_document("instituicoes", inst)
     return {
         "message": "Novo usuário adicionado com sucesso"
     }
@@ -230,7 +292,16 @@ def set_voluntario(v: Voluntario):
         "message": "Novo voluntario adicionado com sucesso"
     }
     
+@app.get("/api/v1/voluntarios/buscarId", dependencies=[Depends(verificar_chave)])
+def buscar_id_por_nome(nome: str):
+    voluntarios = repository.get_collection("voluntarios")
     
+    for v in voluntarios:
+        if v.get("nome") == nome:
+            return {"id": v.get("id")}
+
+    raise HTTPException(status_code=404, detail="Voluntário não encontrado")
+
 @app.put("/api/v1/voluntarios/{doc_id}", dependencies=[Depends(verificar_chave)])
 def update_voluntario(v: Voluntario, doc_id: str):
     data = {
@@ -271,6 +342,16 @@ def set_instituicao(i: Instituicao):
     return {
         "message": "Nova instituição adicionado com sucesso"
     }
+    
+@app.get("/api/v1/instituicoes/buscarId", dependencies=[Depends(verificar_chave)])
+def buscar_id_por_nome(nome: str):
+    voluntarios = repository.get_collection("instituicoes")
+    
+    for v in voluntarios:
+        if v.get("nome") == nome:
+            return {"id": v.get("id")}
+
+    raise HTTPException(status_code=404, detail="Voluntário não encontrado")
         
 @app.put("/api/v1/instituicoes/{doc_id}", dependencies=[Depends(verificar_chave)])
 def update_instituicao(i: Instituicao, doc_id: str):
@@ -295,52 +376,4 @@ def delete_instituicao(doc_id: str):
     repository.delete_document(doc_id)
     return {
         "message": "Instituicao apagada com sucesso"
-    }
-
-@app.post("/api/v1/eventos", dependencies=[Depends(verificar_chave)], status_code=201)
-def criar_evento(e: Evento):
-    data = {
-        "titulo_evento": e.titulo_evento,
-        "instituicao": e.instituicao,
-        "horario_evento": e.horario_evento,
-        "n_participantes": e.n_participantes,
-        "participantes": e.participantes,
-        "status": e.status
-    }
-    repository.set_document("eventos", data)
-    return {
-        "message": "Evento criado com sucesso"
-    }
-
-@app.get("/api/v1/eventos", dependencies=[Depends(verificar_chave)])
-def listar_eventos():
-    return repository.get_collection("eventos")
-
-@app.get("/api/v1/eventos/{doc_id}", dependencies=[Depends(verificar_chave)])
-def get_evento(doc_id: str):
-    data = repository.get_document("eventos", doc_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="Evento não encontrado")
-    return data
-
-@app.put("/api/v1/eventos/{doc_id}", dependencies=[Depends(verificar_chave)])
-def update_evento(e: Evento, doc_id: str):
-    data = {
-        "titulo_evento": e.titulo_evento,
-        "instituicao": e.instituicao,
-        "horario_evento": e.horario_evento,
-        "n_participantes": e.n_participantes,
-        "participantes": e.participantes,
-        "status": e.status
-    }
-    repository.update_document("eventos", data, doc_id)
-    return {
-        "message": "Evento atualizado com sucesso"
-    }
-
-@app.delete("/api/v1/eventos/{doc_id}", dependencies=[Depends(verificar_chave)])
-def delete_evento(doc_id: str):
-    repository.delete_document("eventos", doc_id)
-    return {
-        "message": "Evento apagado com sucesso"
     }
