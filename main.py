@@ -195,7 +195,7 @@ def login(login: Login):
     return {
         "id": user['id'],
         "email": user['email'],
-        "tipo": user['voluntario']
+        "tipo": user['tipo']
     }
 
 @app.post("/api/v1/voluntarios", dependencies=[Depends(verificar_chave)], status_code=201)
